@@ -1,11 +1,19 @@
-<div align="center">
+# NovaForge ⚡
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+> **Visual Studio-level Discord Bot IDE & AI Architect Builder**  
+> Build, test, simulate, and export automated Discord bots with slash commands, rich embeds, visual action pipelines, RPG dungeons, high-roller casino, ticket desks, auto-mod shield, and 24/7 serverless GitHub workflows.
 
-  <h1>Built with AI Studio</h2>
+---
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## ✨ Features
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+- 💬 **Live Discord Chat Simulator:** Test slash commands (`/mine`, `/dungeon`, `/daily`, `/blackjack`, `/ticket`, `/warn`, etc.) in an authentic Discord desktop UI.
+- 🎨 **Visual Studio IDE Modules:**
+  - **Visual Action Flow Builder:** Create multi-step command logic without writing boilerplate.
+  - **Discord Embed Studio:** Real-time color picker, fields, author, footer, and thumbnail preview.
+  - **RPG & Dungeon Boss Engine:** Leveling, weapons, dungeon raid simulator, inventory, and stats.
+  - **Casino & Mini-games:** Interactive blackjack, dice rolls, coin flips, and economy balance.
+  - **Multi-Tier Ticket Desk:** Interactive support ticket panel with user claim & transcript actions.
+  - **Auto-Mod Security Shield:** Anti-spam, anti-invite, bad words filter, and member audit logging.
+  - **Scheduled Cron Workflows:** Visual cron schedule builder with time-zone support.
+  - **Production Code Generator & Exporter:** Export complete Discord.js bots or GitHub Actions serverless cron workflows with a single click.

@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix NovaForge",
+  "description": "Visual Studio-level Discord Bot IDE and AI Architect builder with visual action pipelines, rich embed designer, RPG dungeon bosses, high-roller casino, multi-tier ticket desk, auto-mod shield, and 24/7 serverless GitHub workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
