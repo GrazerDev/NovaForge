@@ -67,12 +67,16 @@ async function startServer() {
 
   // Global Security Headers Middleware (HSTS, CSP, X-Frame-Options, NoSniff, Referrer-Policy, Permissions-Policy)
   app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.removeHeader("X-Powered-By");
+    res.removeHeader("Server");
+    res.setHeader("Server", "NovaForge-Protected");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
     res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
     res.setHeader(
       "Content-Security-Policy",
       [
@@ -95,7 +99,7 @@ async function startServer() {
 
   // Standard Health Check
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok", service: "NovaForge Bot Engine" });
+    res.json({ status: "ok" });
   });
 
   // Rate limiters for sensitive endpoints
@@ -111,30 +115,22 @@ async function startServer() {
   // In-memory active runner sessions
   const botSessionTokens = new Set<string>();
 
-  // Get Live Bot Status & Metrics (Sanitized, requires valid session or active client token)
+  // Get Live Bot Status & Metrics (Requires valid authentication or active session)
   app.get("/api/bot/status", (req, res) => {
     try {
       const authHeader = req.headers["authorization"];
-      const clientSession = req.headers["x-session-token"] as string;
-      const rawStatus = discordBotRunner.getStatus();
-      
-      // If the bot is active, require either session verification or token match
-      if (rawStatus.status === "online" && !authHeader && !clientSession) {
-        // Return minimal safe status for public telemetry
-        return res.json({
-          success: true,
-          status: "online",
-          uptimeSeconds: rawStatus.uptimeSeconds || 0,
-          pingMs: rawStatus.pingMs || 0,
-          botUser: rawStatus.botUser ? {
-            username: rawStatus.botUser.username,
-            tag: rawStatus.botUser.tag,
-            avatarUrl: rawStatus.botUser.avatarUrl
-          } : null,
-          guildsCount: (rawStatus.guilds || []).length,
-          logs: []
+      const clientSession = (req.headers["x-session-token"] as string) || (req.query.session as string);
+
+      if (!clientSession && !authHeader) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized. Session token or bearer authorization required.",
+          status: "idle",
+          active: false
         });
       }
+
+      const rawStatus = discordBotRunner.getStatus();
 
       // Sanitize logs to redact any sensitive credentials or internal paths
       const sanitizedLogs = (rawStatus.logs || []).map((l: any) => ({
@@ -188,31 +184,36 @@ async function startServer() {
       const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
       const callerToken = req.body?.token;
 
-      // Verify authorization if bot is running
-      const currentStatus = discordBotRunner.getStatus();
-      if (currentStatus.status === "online") {
-        const hasSession = sessionKey && botSessionTokens.has(sessionKey);
-        const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
+      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
+      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
 
-        if (!hasSession && !hasValidToken) {
-          return res.status(403).json({
-            success: false,
-            message: "Authentication required to stop active bot instance. Please provide your bot token or active session."
-          });
-        }
+      if (!hasSession && !hasValidToken) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized. Session token or bot token required to stop instance."
+        });
       }
 
       await discordBotRunner.stop();
       if (sessionKey) botSessionTokens.delete(sessionKey);
       res.json({ success: true, message: "Bot disconnected and stopped successfully." });
     } catch {
-      res.status(500).json({ success: false, message: "Failed to stop bot session." });
+      res.status(500).json({ success: false, error: "Failed to stop bot session." });
     }
   });
 
   // Restart / Sync Live Bot
   app.post("/api/bot/restart", botControlLimiter, async (req, res) => {
     try {
+      const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
+      const callerToken = req.body?.token;
+      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
+      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
+
+      if (!hasSession && !hasValidToken && !discordBotRunner.getStatus().botUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized. Valid session required." });
+      }
+
       const { token, botProject } = req.body;
       if (token && typeof token === "string" && botProject) {
         const result = await discordBotRunner.start(token.trim(), botProject);
@@ -221,7 +222,7 @@ async function startServer() {
       const result = await discordBotRunner.restart();
       res.json(result);
     } catch {
-      res.status(500).json({ success: false, message: "Failed to restart bot." });
+      res.status(500).json({ success: false, error: "Failed to restart bot." });
     }
   });
 
@@ -230,9 +231,11 @@ async function startServer() {
     try {
       const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
       const callerToken = req.body?.token;
+      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
+      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
 
-      if (!sessionKey && !callerToken && !discordBotRunner.getStatus().botUser) {
-        return res.status(401).json({ success: false, message: "Authentication required." });
+      if (!hasSession && !hasValidToken && !discordBotRunner.getStatus().botUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized. Valid session required." });
       }
 
       const ok = await discordBotRunner.registerSlashCommands();
@@ -242,7 +245,7 @@ async function startServer() {
         res.status(400).json({ success: false, message: "Bot is not connected or commands could not be registered." });
       }
     } catch {
-      res.status(500).json({ success: false, message: "Failed to sync commands with Discord Gateway." });
+      res.status(500).json({ success: false, error: "Failed to sync commands with Discord Gateway." });
     }
   });
 
@@ -390,8 +393,9 @@ async function startServer() {
 
       const client = getAIClient();
       if (!client) {
-        return res.status(500).json({
-          error: "Gemini AI service is not initialized on the server.",
+        return res.status(503).json({
+          success: false,
+          error: "AI generation service is temporarily unavailable."
         });
       }
 
