@@ -316,7 +316,7 @@ export const WelcomeAuthScreen: React.FC<WelcomeAuthScreenProps> = ({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="architect@novaforge.dev"
+                  placeholder="you@example.com"
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                 />
               </div>
