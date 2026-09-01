@@ -38,24 +38,10 @@ export interface TelemetryEvent {
 }
 
 export interface AdminAccessConfig {
-  superAdminEmails: string[];
+  superAdminEmail: string;
   whitelistEmails: string[];
-  masterPasscodes: string[];
+  masterPasscode: string;
 }
-
-const SUPER_ADMINS_DEFAULT = [
-  'scientiapioneers@gmail.com',
-  'everythingistaken325@gmail.com',
-  'owner@novaforge.dev',
-  'admin@novaforge.dev'
-];
-
-const VALID_PASSCODES = [
-  'NOVA_SUPER_ARCHITECT_2026',
-  'ADMIN2026',
-  'MASTER_ADMIN_2026',
-  'novaforge'
-];
 
 class TelemetryStore {
   private users: Map<string, TelemetryUserRecord> = new Map();
@@ -63,182 +49,47 @@ class TelemetryStore {
   private activeSessions: Map<string, number> = new Map(); // sessionKey -> lastPingTimestamp
 
   private adminConfig: AdminAccessConfig = {
-    superAdminEmails: [...SUPER_ADMINS_DEFAULT],
+    superAdminEmail: 'everythingistaken325@gmail.com',
     whitelistEmails: [
-      ...SUPER_ADMINS_DEFAULT,
-      'architect@novaforge.dev',
-      'dev@novaforge.io'
+      'everythingistaken325@gmail.com',
+      'owner@novaforge.dev',
+      'admin@novaforge.dev'
     ],
-    masterPasscodes: [...VALID_PASSCODES]
+    masterPasscode: 'NOVA_SUPER_ARCHITECT_2026'
   };
 
   constructor() {
+    // Seed initial demo/founder stats for rich visualization
     this.seedInitialData();
   }
 
-  public seedInitialData() {
-    this.users.clear();
-    this.events = [];
-
-    const founder1: TelemetryUserRecord = {
-      uid: 'super_architect_sp',
-      email: 'scientiapioneers@gmail.com',
-      displayName: 'Scientia Pioneers (Super Admin)',
-      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
-      provider: 'google',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
-      lastActiveAt: new Date().toISOString(),
-      botsCount: 6,
-      lastBotName: 'NovaMaster RPG & AutoMod',
-      commandsCount: 34,
-      exportsCount: 18,
-      is2FAEnabled: true,
-      role: 'super_admin',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    };
-    this.users.set(founder1.uid, founder1);
-
-    const founder2: TelemetryUserRecord = {
+  private seedInitialData() {
+    const founder: TelemetryUserRecord = {
       uid: 'founder_owner_01',
       email: 'everythingistaken325@gmail.com',
-      displayName: 'EverythingIsTaken (Co-Founder)',
-      photoURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+      displayName: 'EverythingIsTaken (Owner)',
+      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
       provider: 'google',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(),
-      lastActiveAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      botsCount: 4,
-      lastBotName: 'Aegis Sentinel Security',
-      commandsCount: 22,
-      exportsCount: 11,
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      botsCount: 5,
+      lastBotName: 'NovaMaster All-In-One',
+      commandsCount: 28,
+      exportsCount: 14,
       is2FAEnabled: true,
       role: 'super_admin',
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-    };
-    this.users.set(founder2.uid, founder2);
-
-    const user3: TelemetryUserRecord = {
-      uid: 'arch_valkyrie_88',
-      email: 'valkyrie.dev@discordbot.net',
-      displayName: 'Valkyrie Dev',
-      photoURL: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
-      provider: 'novaforge',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-      lastActiveAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-      botsCount: 3,
-      lastBotName: 'High Roller Casino Bot',
-      commandsCount: 18,
-      exportsCount: 6,
-      is2FAEnabled: true,
-      role: 'admin',
-      userAgent: 'Mozilla/5.0 (X11; Linux x86_64)'
-    };
-    this.users.set(user3.uid, user3);
-
-    const user4: TelemetryUserRecord = {
-      uid: 'arch_nexus_99',
-      email: 'nexus.architect@gamingguild.com',
-      displayName: 'Nexus Guildmaster',
-      photoURL: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
-      provider: 'google',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-      lastActiveAt: new Date(Date.now() - 1000 * 60 * 80).toISOString(),
-      botsCount: 2,
-      lastBotName: 'Astral Dungeon Leveler',
-      commandsCount: 14,
-      exportsCount: 4,
-      is2FAEnabled: false,
-      role: 'architect',
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     };
-    this.users.set(user4.uid, user4);
+    this.users.set(founder.uid, founder);
 
-    const user5: TelemetryUserRecord = {
-      uid: 'guest_pulse_demo',
-      email: null,
-      displayName: 'Guest Architect',
-      photoURL: null,
-      provider: 'guest',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-      lastActiveAt: new Date().toISOString(),
-      botsCount: 1,
-      lastBotName: 'NovaForge Quick Prototype',
-      commandsCount: 6,
-      exportsCount: 1,
-      is2FAEnabled: false,
-      role: 'architect'
-    };
-    this.users.set(user5.uid, user5);
-
-    // Initial event feed
-    const now = Date.now();
-    const sampleEvents: Array<Omit<TelemetryEvent, 'id'>> = [
-      {
-        timestamp: new Date(now - 1000 * 60 * 2).toISOString(),
-        type: 'PAGE_VIEW',
-        userId: founder1.uid,
-        userEmail: founder1.email,
-        userName: founder1.displayName,
-        details: { viewMode: 'admin_panel' }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 12).toISOString(),
-        type: 'BOT_EXPORTED',
-        userId: user3.uid,
-        userEmail: user3.email,
-        userName: user3.displayName,
-        details: { format: 'zip', botName: 'High Roller Casino Bot' }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 25).toISOString(),
-        type: 'COMMAND_ADDED',
-        userId: founder1.uid,
-        userEmail: founder1.email,
-        userName: founder1.displayName,
-        details: { command: 'dungeon_boss', botName: 'NovaMaster RPG & AutoMod' }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 45).toISOString(),
-        type: '2FA_ENABLED',
-        userId: user3.uid,
-        userEmail: user3.email,
-        userName: user3.displayName,
-        details: { provider: 'totp' }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 75).toISOString(),
-        type: 'BOT_CREATED',
-        userId: user4.uid,
-        userEmail: user4.email,
-        userName: user4.displayName,
-        details: { botName: 'Astral Dungeon Leveler', commandsCount: 14 }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 110).toISOString(),
-        type: 'USER_LOGIN',
-        userId: founder1.uid,
-        userEmail: founder1.email,
-        userName: founder1.displayName,
-        details: { provider: 'google', role: 'super_admin' }
-      },
-      {
-        timestamp: new Date(now - 1000 * 60 * 180).toISOString(),
-        type: 'USER_SIGNUP',
-        userId: user4.uid,
-        userEmail: user4.email,
-        userName: user4.displayName,
-        details: { provider: 'google' }
-      }
-    ];
-
-    sampleEvents.forEach(evt => {
-      this.events.push({
-        id: 'evt_' + Math.random().toString(36).substring(2, 11),
-        ...evt
-      });
+    // Initial event
+    this.recordEvent({
+      type: 'USER_LOGIN',
+      userId: founder.uid,
+      userEmail: founder.email,
+      userName: founder.displayName,
+      details: { role: 'super_admin', provider: 'google' }
     });
-
-    // Active session ping
-    this.activeSessions.set('init_founder_pulse', now);
   }
 
   public recordEvent(eventData: Omit<TelemetryEvent, 'id' | 'timestamp'>): TelemetryEvent {
@@ -266,9 +117,9 @@ class TelemetryStore {
         commandsCount: 6,
         exportsCount: 0,
         is2FAEnabled: false,
-        role: this.isEmailSuperAdmin(event.userEmail) 
-          ? 'super_admin' 
-          : (this.isEmailAdmin(event.userEmail) ? 'admin' : 'architect')
+        role: (event.userEmail && this.isEmailAdmin(event.userEmail)) 
+          ? (event.userEmail.toLowerCase() === this.adminConfig.superAdminEmail.toLowerCase() ? 'super_admin' : 'admin')
+          : 'architect'
       };
 
       existing.lastActiveAt = new Date().toISOString();
@@ -289,10 +140,8 @@ class TelemetryStore {
         if (event.details?.provider) existing.provider = event.details.provider;
       }
 
-      if (this.isEmailSuperAdmin(existing.email)) {
-        existing.role = 'super_admin';
-      } else if (this.isEmailAdmin(existing.email)) {
-        existing.role = 'admin';
+      if (existing.email && this.isEmailAdmin(existing.email)) {
+        existing.role = existing.email.toLowerCase() === this.adminConfig.superAdminEmail.toLowerCase() ? 'super_admin' : 'admin';
       }
 
       this.users.set(event.userId, existing);
@@ -307,10 +156,6 @@ class TelemetryStore {
       const user = this.users.get(userId);
       if (user) {
         user.lastActiveAt = new Date().toISOString();
-        if (email) user.email = email;
-        if (name) user.displayName = name;
-        if (this.isEmailSuperAdmin(email)) user.role = 'super_admin';
-        else if (this.isEmailAdmin(email)) user.role = 'admin';
       } else {
         this.recordEvent({
           type: 'HEARTBEAT',
@@ -332,45 +177,32 @@ class TelemetryStore {
     return Math.max(1, count); // at least current user
   }
 
-  public isEmailSuperAdmin(email: string | null | undefined): boolean {
-    if (!email) return false;
-    const clean = email.trim().toLowerCase();
-    return this.adminConfig.superAdminEmails.some(e => e.toLowerCase() === clean);
-  }
-
   public isEmailAdmin(email: string | null | undefined): boolean {
     if (!email) return false;
     const clean = email.trim().toLowerCase();
-    if (this.isEmailSuperAdmin(clean)) return true;
+    if (clean === this.adminConfig.superAdminEmail.toLowerCase()) return true;
     return this.adminConfig.whitelistEmails.some(e => e.toLowerCase() === clean);
   }
 
   public checkAdminAccess(email?: string | null, passcode?: string | null): { allowed: boolean; role?: 'super_admin' | 'admin'; reason?: string } {
-    // 1. Passcode match check
-    if (passcode) {
-      const cleanPass = passcode.trim();
-      if (this.adminConfig.masterPasscodes.some(p => p.toLowerCase() === cleanPass.toLowerCase())) {
-        return { allowed: true, role: 'super_admin' };
-      }
+    if (passcode && passcode.trim() === this.adminConfig.masterPasscode) {
+      return { allowed: true, role: 'super_admin' };
     }
-
-    // 2. Email verification check
     if (email) {
       const clean = email.trim().toLowerCase();
-      if (this.isEmailSuperAdmin(clean)) {
+      if (clean === this.adminConfig.superAdminEmail.toLowerCase()) {
         return { allowed: true, role: 'super_admin' };
       }
-      if (this.isEmailAdmin(clean)) {
+      if (this.adminConfig.whitelistEmails.some(e => e.toLowerCase() === clean)) {
         return { allowed: true, role: 'admin' };
       }
     }
-
-    return { allowed: false, reason: 'Unauthorized. Your email or passcode is not on the Master Architect access list.' };
+    return { allowed: false, reason: 'Unauthorized. Your email is not on the Master Architect access list.' };
   }
 
   public addAdminEmail(email: string): boolean {
     const clean = email.trim().toLowerCase();
-    if (!this.adminConfig.whitelistEmails.some(e => e.toLowerCase() === clean)) {
+    if (!this.adminConfig.whitelistEmails.includes(clean)) {
       this.adminConfig.whitelistEmails.push(clean);
       return true;
     }
@@ -379,16 +211,16 @@ class TelemetryStore {
 
   public removeAdminEmail(email: string): boolean {
     const clean = email.trim().toLowerCase();
-    if (this.isEmailSuperAdmin(clean)) return false;
+    if (clean === this.adminConfig.superAdminEmail.toLowerCase()) return false;
     this.adminConfig.whitelistEmails = this.adminConfig.whitelistEmails.filter(e => e.toLowerCase() !== clean);
     return true;
   }
 
-  public getAdminConfig() {
+  public getAdminConfig(): AdminAccessConfig {
     return {
-      superAdminEmails: [...this.adminConfig.superAdminEmails],
+      superAdminEmail: this.adminConfig.superAdminEmail,
       whitelistEmails: [...this.adminConfig.whitelistEmails],
-      masterPasscode: 'NOVA_SUPER_ARCHITECT_2026'
+      masterPasscode: '••••••••'
     };
   }
 
@@ -408,12 +240,12 @@ class TelemetryStore {
     // Module popularity aggregate
     const moduleStats = {
       slashCommands: totalCommands,
-      rpgDungeons: Math.max(32, Math.round(totalBots * 0.75)),
-      casinoEconomy: Math.max(38, Math.round(totalBots * 0.85)),
-      ticketDesk: Math.max(28, Math.round(totalBots * 0.65)),
-      autoModAegis: Math.max(41, Math.round(totalBots * 0.90)),
-      astralLeveling: Math.max(30, Math.round(totalBots * 0.70)),
-      schedulers: Math.max(22, Math.round(totalBots * 0.50))
+      rpgDungeons: Math.round(totalBots * 0.75),
+      casinoEconomy: Math.round(totalBots * 0.85),
+      ticketDesk: Math.round(totalBots * 0.65),
+      autoModAegis: Math.round(totalBots * 0.90),
+      astralLeveling: Math.round(totalBots * 0.70),
+      schedulers: Math.round(totalBots * 0.50)
     };
 
     return {
@@ -426,9 +258,8 @@ class TelemetryStore {
       twoFactorRate,
       moduleStats,
       users: usersList,
-      recentEvents: this.events.slice(0, 100),
-      adminWhitelist: this.adminConfig.whitelistEmails,
-      superAdminEmails: this.adminConfig.superAdminEmails
+      recentEvents: this.events.slice(0, 50),
+      adminWhitelist: this.adminConfig.whitelistEmails
     };
   }
 }

@@ -270,13 +270,13 @@ export type MainAppViewMode =
   | 'welcome_auth' 
   | 'dash' 
   | 'ai_building' 
+  | 'code_studio'
   | 'simulator' 
   | 'modules' 
   | 'live_gateway' 
   | 'schedulers' 
   | 'security_2fa' 
-  | 'account_settings'
-  | 'admin_panel';
+  | 'account_settings';
 
 export interface TwoFactorSecurityData {
   isEnabled: boolean;

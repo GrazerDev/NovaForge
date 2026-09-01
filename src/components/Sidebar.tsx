@@ -18,7 +18,7 @@ import {
   CheckCircle2, 
   X,
   Lock,
-  Activity
+  Code2
 } from 'lucide-react';
 import { MainAppViewMode, BotTokenInfo, BotProject } from '../types';
 import { NovaForgeUser } from '../lib/firebase';
@@ -86,6 +86,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       group: 'Studio & Workflows',
       items: [
         {
+          id: 'code_studio' as MainAppViewMode,
+          label: 'Code IDE (py & js)',
+          icon: Code2,
+          badge: 'Python & JS',
+          badgeColor: 'bg-gradient-to-r from-amber-500/20 to-blue-500/20 text-amber-300 border-amber-500/30'
+        },
+        {
           id: 'modules' as MainAppViewMode,
           label: 'Visual Modules',
           icon: Layers,
@@ -122,13 +129,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           id: 'account_settings' as MainAppViewMode,
           label: 'Account & Settings',
           icon: Settings
-        },
-        {
-          id: 'admin_panel' as MainAppViewMode,
-          label: 'Admin & User Tracking',
-          icon: Activity,
-          badge: '/admin/panel',
-          badgeColor: 'bg-red-500/20 text-red-300 border-red-500/30'
         }
       ]
     }

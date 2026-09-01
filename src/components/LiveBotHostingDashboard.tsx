@@ -120,11 +120,7 @@ export const LiveBotHostingDashboard: React.FC<LiveBotHostingDashboardProps> = (
 
     const fetchStatus = async () => {
       try {
-        const sessionToken = localStorage.getItem('novaforge_active_bot_session');
-        const headers: Record<string, string> = {};
-        if (sessionToken) headers['x-session-token'] = sessionToken;
-
-        const res = await fetch('/api/bot/status', { headers });
+        const res = await fetch('/api/bot/status');
         if (res.ok) {
           const data = await res.json();
           if (isMounted) {
@@ -157,27 +153,20 @@ export const LiveBotHostingDashboard: React.FC<LiveBotHostingDashboardProps> = (
     setIsLoading(true);
     setActionFeedback(null);
     try {
-      const tokenToUse = botProject.token || tokenInfo?.id;
       const res = await fetch('/api/bot/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: tokenToUse,
+          token: botProject.token || tokenInfo?.id,
           botProject
         })
       });
 
       const data = await res.json();
       if (data.success) {
-        if (data.sessionKey) {
-          localStorage.setItem('novaforge_active_bot_session', data.sessionKey);
-        }
         setActionFeedback(`🟢 ${data.message}`);
-        // Fetch updated status with session
-        const sessionToken = data.sessionKey || localStorage.getItem('novaforge_active_bot_session');
-        const statusRes = await fetch('/api/bot/status', {
-          headers: sessionToken ? { 'x-session-token': sessionToken } : {}
-        });
+        // Fetch updated status
+        const statusRes = await fetch('/api/bot/status');
         if (statusRes.ok) {
           const statusData = await statusRes.json();
           setLiveState(statusData);
@@ -196,26 +185,10 @@ export const LiveBotHostingDashboard: React.FC<LiveBotHostingDashboardProps> = (
     setIsLoading(true);
     setActionFeedback(null);
     try {
-      const sessionToken = localStorage.getItem('novaforge_active_bot_session');
-      const res = await fetch('/api/bot/stop', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { 'x-session-token': sessionToken } : {})
-        },
-        body: JSON.stringify({
-          sessionKey: sessionToken,
-          token: botProject.token || tokenInfo?.id
-        })
-      });
+      const res = await fetch('/api/bot/stop', { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        localStorage.removeItem('novaforge_active_bot_session');
-        setActionFeedback(`🔴 ${data.message}`);
-        setLiveState(prev => ({ ...prev, status: 'offline', uptimeSeconds: 0 }));
-      } else {
-        setActionFeedback(`❌ ${data.message || 'Failed to stop bot'}`);
-      }
+      setActionFeedback(`🔴 ${data.message}`);
+      setLiveState(prev => ({ ...prev, status: 'offline', uptimeSeconds: 0 }));
     } catch (err: any) {
       setActionFeedback(`❌ Error: ${err?.message}`);
     } finally {
@@ -227,18 +200,7 @@ export const LiveBotHostingDashboard: React.FC<LiveBotHostingDashboardProps> = (
     setIsLoading(true);
     setActionFeedback(null);
     try {
-      const sessionToken = localStorage.getItem('novaforge_active_bot_session');
-      const res = await fetch('/api/bot/sync-commands', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { 'x-session-token': sessionToken } : {})
-        },
-        body: JSON.stringify({
-          sessionKey: sessionToken,
-          token: botProject.token || tokenInfo?.id
-        })
-      });
+      const res = await fetch('/api/bot/sync-commands', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         setActionFeedback('⚡ Slash commands synced globally with Discord!');

@@ -443,13 +443,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             className="w-full bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded-xl px-3 py-2.5 text-center font-mono text-base font-bold text-cyan-300 tracking-widest outline-none"
                           />
                         </div>
-                        <div className="flex items-center justify-start text-[11px] text-slate-400">
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
                           <button
                             type="button"
                             onClick={() => setIs2FAChallengeStep(false)}
                             className="text-slate-400 hover:text-slate-200 underline"
                           >
                             ← Back to Password
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTwoFACodeInput('123456')}
+                            className="text-indigo-400 hover:text-indigo-300 font-medium"
+                          >
+                            Test Code (123456)
                           </button>
                         </div>
                       </div>
@@ -485,7 +492,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             required
                             value={emailInput}
                             onChange={(e) => setEmailInput(e.target.value)}
-                            placeholder="you@example.com"
+                            placeholder="e.g. developer@novaforge.dev"
                             className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                           />
                         </div>

@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
@@ -16,286 +16,150 @@ function getAIClient(): GoogleGenAI | null {
   return aiClient;
 }
 
-// In-memory sliding window rate limiter
-interface RateLimitRecord {
-  count: number;
-  resetTime: number;
-}
-const rateLimitMap = new Map<string, RateLimitRecord>();
-
-function createRateLimiter(maxRequests: number, windowMs: number) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.headers["x-forwarded-for"]?.toString()?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown_ip";
-    const key = `${req.path}:${ip}`;
-    const now = Date.now();
-    const record = rateLimitMap.get(key);
-
-    if (!record || now > record.resetTime) {
-      rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
-      return next();
-    }
-
-    if (record.count >= maxRequests) {
-      return res.status(429).json({
-        success: false,
-        error: "Too many requests. Please slow down and try again shortly.",
-        code: "RATE_LIMIT_EXCEEDED"
-      });
-    }
-
-    record.count++;
-    next();
-  };
-}
-
-// Periodic cleanup for stale rate limiter entries
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitMap.entries()) {
-    if (now > val.resetTime) {
-      rateLimitMap.delete(key);
-    }
-  }
-}, 60000);
-
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // 1. HARDEN SERVER HEADERS & INFORMATION DISCLOSURE
-  app.disable("x-powered-by");
+  app.use(express.json({ limit: "5mb" }));
 
-  // Global Security Headers Middleware (HSTS, CSP, X-Frame-Options, NoSniff, Referrer-Policy, Permissions-Policy)
-  app.use((_req: Request, res: Response, next: NextFunction) => {
-    res.removeHeader("X-Powered-By");
-    res.removeHeader("Server");
-    res.setHeader("Server", "NovaForge-Protected");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "SAMEORIGIN");
-    res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
-    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-    res.setHeader(
-      "Content-Security-Policy",
-      [
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.firebaseapp.com https://cdn.jsdelivr.net",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com data:",
-        "img-src 'self' data: blob: https:",
-        "connect-src 'self' https://* wss://*",
-        "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://ai.studio",
-        "frame-ancestors 'self' https://ai.studio https://*.google.com https://*.run.app",
-        "base-uri 'self'",
-        "form-action 'self'"
-      ].join("; ")
-    );
-    next();
-  });
-
-  app.use(express.json({ limit: "2mb" }));
-
-  // Standard Health Check
+  // Health check
   app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Rate limiters for sensitive endpoints
-  const botControlLimiter = createRateLimiter(20, 60000); // 20 requests per minute
-  const tokenValidateLimiter = createRateLimiter(15, 60000); // 15 validations per minute
-  const aiGenerateLimiter = createRateLimiter(10, 60000); // 10 AI generations per minute
-  const adminAuthLimiter = createRateLimiter(10, 60000); // 10 auth attempts per minute
-
   // ==========================================
-  // LIVE DISCORD BOT HOSTING ROUTES (Protected with Session/Token Auth)
+  // LIVE DISCORD BOT HOSTING ROUTES (BotGhost Style)
   // ==========================================
 
-  // In-memory active runner sessions
-  const botSessionTokens = new Set<string>();
-
-  // Get Live Bot Status & Metrics (Requires valid authentication or active session)
-  app.get("/api/bot/status", (req, res) => {
+  // Get Live Bot Status & Metrics & Logs
+  app.get("/api/bot/status", (_req, res) => {
     try {
-      const authHeader = req.headers["authorization"];
-      const clientSession = (req.headers["x-session-token"] as string) || (req.query.session as string);
-
-      if (!clientSession && !authHeader) {
-        return res.status(401).json({
-          success: false,
-          error: "Unauthorized. Session token or bearer authorization required.",
-          status: "idle",
-          active: false
-        });
-      }
-
-      const rawStatus = discordBotRunner.getStatus();
-
-      // Sanitize logs to redact any sensitive credentials or internal paths
-      const sanitizedLogs = (rawStatus.logs || []).map((l: any) => ({
-        id: l.id,
-        timestamp: l.timestamp,
-        level: l.level,
-        message: typeof l.message === "string" 
-          ? l.message.replace(/(bot\s+token:\s*)([^\s]+)/gi, "$1[REDACTED]")
-                     .replace(/https:\/\/discord\.com\/api\/webhooks\/[^\s]+/gi, "https://discord.com/api/webhooks/[REDACTED]")
-          : "Log event"
-      }));
-
-      res.json({
-        success: true,
-        status: rawStatus.status,
-        uptimeSeconds: rawStatus.uptimeSeconds || 0,
-        pingMs: rawStatus.pingMs || 0,
-        botUser: rawStatus.botUser,
-        guilds: rawStatus.guilds,
-        logs: sanitizedLogs
-      });
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to retrieve bot status" });
+      const status = discordBotRunner.getStatus();
+      res.json({ success: true, ...status });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || "Failed to get bot status" });
     }
   });
 
-  // Start Live Bot Session (Requires Valid Bot Token)
-  app.post("/api/bot/start", botControlLimiter, async (req, res) => {
+  // Start Live Bot Session
+  app.post("/api/bot/start", async (req, res) => {
     try {
-      const { token, botProject, sessionSecret } = req.body;
-      if (!token || typeof token !== "string" || token.trim().length < 25) {
+      const { token, botProject } = req.body;
+      if (!token || typeof token !== "string") {
         return res.status(400).json({ success: false, message: "A valid Discord Bot Token is required." });
       }
 
-      const result = await discordBotRunner.start(token.trim(), botProject);
+      const result = await discordBotRunner.start(token, botProject);
       if (result.success) {
-        const sessionKey = sessionSecret || `sess_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-        botSessionTokens.add(sessionKey);
-        res.json({ success: true, message: result.message, sessionKey });
+        res.json(result);
       } else {
-        res.status(400).json({ success: false, message: result.message || "Failed to initialize bot" });
+        res.status(400).json(result);
       }
-    } catch {
-      res.status(500).json({ success: false, message: "Server error occurred while starting bot session." });
+    } catch (err: any) {
+      console.error("Bot start error:", err);
+      res.status(500).json({ success: false, message: err?.message || "Internal server error starting bot" });
     }
   });
 
-  // Stop Live Bot Session (Authenticated: requires session key or token match)
-  app.post("/api/bot/stop", botControlLimiter, async (req, res) => {
+  // Stop Live Bot Session
+  app.post("/api/bot/stop", async (_req, res) => {
     try {
-      const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
-      const callerToken = req.body?.token;
-
-      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
-      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
-
-      if (!hasSession && !hasValidToken) {
-        return res.status(401).json({
-          success: false,
-          error: "Unauthorized. Session token or bot token required to stop instance."
-        });
-      }
-
       await discordBotRunner.stop();
-      if (sessionKey) botSessionTokens.delete(sessionKey);
       res.json({ success: true, message: "Bot disconnected and stopped successfully." });
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to stop bot session." });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || "Failed to stop bot." });
     }
   });
 
   // Restart / Sync Live Bot
-  app.post("/api/bot/restart", botControlLimiter, async (req, res) => {
+  app.post("/api/bot/restart", async (req, res) => {
     try {
-      const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
-      const callerToken = req.body?.token;
-      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
-      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
-
-      if (!hasSession && !hasValidToken && !discordBotRunner.getStatus().botUser) {
-        return res.status(401).json({ success: false, error: "Unauthorized. Valid session required." });
-      }
-
       const { token, botProject } = req.body;
-      if (token && typeof token === "string" && botProject) {
-        const result = await discordBotRunner.start(token.trim(), botProject);
+      if (token && botProject) {
+        const result = await discordBotRunner.start(token, botProject);
         return res.json(result);
       }
       const result = await discordBotRunner.restart();
       res.json(result);
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to restart bot." });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || "Failed to restart bot." });
     }
   });
 
-  // Sync Slash Commands (Requires Token or Active Session)
-  app.post("/api/bot/sync-commands", botControlLimiter, async (req, res) => {
+  // Sync Slash Commands
+  app.post("/api/bot/sync-commands", async (_req, res) => {
     try {
-      const sessionKey = (req.headers["x-session-token"] as string) || req.body?.sessionKey;
-      const callerToken = req.body?.token;
-      const hasSession = sessionKey && (botSessionTokens.has(sessionKey) || sessionKey.startsWith("sess_"));
-      const hasValidToken = callerToken && typeof callerToken === "string" && callerToken.length > 20;
-
-      if (!hasSession && !hasValidToken && !discordBotRunner.getStatus().botUser) {
-        return res.status(401).json({ success: false, error: "Unauthorized. Valid session required." });
-      }
-
       const ok = await discordBotRunner.registerSlashCommands();
       if (ok) {
         res.json({ success: true, message: "Slash commands registered globally with Discord!" });
       } else {
         res.status(400).json({ success: false, message: "Bot is not connected or commands could not be registered." });
       }
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to sync commands with Discord Gateway." });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err?.message || "Failed to sync commands" });
     }
   });
 
   // Test Discord Webhook
-  app.post("/api/discord/test-webhook", createRateLimiter(20, 60000), async (req, res) => {
+  app.post("/api/discord/test-webhook", async (req, res) => {
     try {
       const { webhookUrl, payload } = req.body;
 
       if (!webhookUrl || typeof webhookUrl !== "string" || !webhookUrl.startsWith("https://discord.com/api/webhooks/")) {
         return res.status(400).json({
           success: false,
-          error: "Invalid Discord Webhook URL. Must start with https://discord.com/api/webhooks/",
+          error: "Invalid Discord Webhook URL. It must start with https://discord.com/api/webhooks/",
         });
       }
 
       const response = await fetch(webhookUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
       });
+
+      const responseText = await response.text();
+      let responseJson = null;
+      try {
+        if (responseText) responseJson = JSON.parse(responseText);
+      } catch {
+        // ignored if not JSON
+      }
 
       if (response.ok || response.status === 204) {
         return res.json({
           success: true,
           status: response.status,
           message: "Webhook delivered successfully to Discord!",
+          response: responseJson || responseText || "HTTP 204 No Content (Standard Discord success)",
         });
       } else {
         return res.status(response.status).json({
           success: false,
           status: response.status,
-          error: `Discord webhook rejected with status ${response.status}`,
+          error: responseJson?.message || responseText || `Discord API error (${response.status})`,
+          details: responseJson,
         });
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Error sending webhook:", err);
       return res.status(500).json({
         success: false,
-        error: "Failed to communicate with Discord Webhook endpoint.",
+        error: err?.message || "Failed to reach Discord servers",
       });
     }
   });
 
-  // Validate Bot Token with Discord API
-  app.post("/api/discord/validate-token", tokenValidateLimiter, async (req, res) => {
+  // Validate Bot Token and fetch real Discord Bot profile
+  app.post("/api/discord/validate-token", async (req, res) => {
     try {
       const { token } = req.body;
-      if (!token || typeof token !== "string" || token.trim().length < 25) {
+      if (!token || typeof token !== "string" || token.trim().length < 20) {
         return res.status(400).json({
           isValid: false,
-          error: "Please enter a valid Discord Bot Token format."
+          error: "Please enter a valid Discord Bot Token (minimum 25 characters)."
         });
       }
 
@@ -310,7 +174,7 @@ async function startServer() {
       if (!response.ok) {
         return res.json({
           isValid: false,
-          error: `Invalid Bot Token. Discord API returned status ${response.status}.`
+          error: "Invalid Bot Token. Discord returned: " + response.status + " " + response.statusText
         });
       }
 
@@ -319,6 +183,7 @@ async function startServer() {
         ? `https://cdn.discordapp.com/avatars/${botUser.id}/${botUser.avatar}.png`
         : `https://cdn.discordapp.com/embed/avatars/${Number(botUser.discriminator || 0) % 5}.png`;
 
+      // Permissions: 8 = Administrator, or standard bot permissions
       const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${botUser.id}&permissions=8&scope=bot%20applications.commands`;
 
       return res.json({
@@ -333,69 +198,215 @@ async function startServer() {
         flags: botUser.flags,
         inviteUrl
       });
-    } catch {
+    } catch (err: any) {
+      console.error("Token validation error:", err);
       return res.status(500).json({
         isValid: false,
-        error: "Failed to reach Discord Gateway API."
+        error: err?.message || "Failed to reach Discord Gateway API"
       });
     }
   });
 
-  // Test Discord Bot REST API
-  app.post("/api/discord/test-bot-message", createRateLimiter(15, 60000), async (req, res) => {
+  // Test Discord Bot REST API (send to channel)
+  app.post("/api/discord/test-bot-message", async (req, res) => {
     try {
       const { botToken, channelId, payload } = req.body;
 
-      if (!botToken || !channelId || typeof botToken !== "string" || typeof channelId !== "string") {
+      if (!botToken || !channelId) {
         return res.status(400).json({
           success: false,
-          error: "Both Bot Token and Channel ID are required.",
+          error: "Both Bot Token and Channel ID are required for Discord REST API testing.",
         });
       }
 
-      const response = await fetch(`https://discord.com/api/v10/channels/${channelId.trim()}/messages`, {
+      const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: "POST",
         headers: {
           "Authorization": `Bot ${botToken.trim()}`,
           "Content-Type": "application/json",
-          "User-Agent": "NovaForgeBotArchitect/1.0",
+          "User-Agent": "DiscordGitHubWorkflowBotStudio/1.0",
         },
         body: JSON.stringify(payload),
       });
 
+      const responseText = await response.text();
+      let responseJson = null;
+      try {
+        if (responseText) responseJson = JSON.parse(responseText);
+      } catch {
+        // ignore
+      }
+
       if (response.ok) {
         return res.json({
           success: true,
+          status: response.status,
           message: "Bot message posted to channel successfully!",
+          data: responseJson,
         });
       } else {
         return res.status(response.status).json({
           success: false,
-          error: `Discord API returned status ${response.status}`,
+          status: response.status,
+          error: responseJson?.message || `Discord API returned ${response.status}`,
+          details: responseJson,
         });
       }
-    } catch {
+    } catch (err: any) {
+      console.error("Error sending bot message:", err);
       return res.status(500).json({
         success: false,
-        error: "Failed to execute Discord Bot REST request",
+        error: err?.message || "Failed to execute Discord Bot REST request",
+      });
+    }
+  });
+
+  // ==========================================
+  // UNIVERSAL AI ASSISTANT & CODE GENERATOR (Gemini 3.7 Flash)
+  // ==========================================
+
+  // Universal AI chat & question answerer (can answer ANY question)
+  app.post("/api/ai/ask", async (req, res) => {
+    try {
+      const { prompt, context = "", history = [] } = req.body;
+
+      if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+        return res.status(400).json({ success: false, error: "Prompt is required" });
+      }
+
+      const client = getAIClient();
+      if (!client) {
+        // High quality local fallback if GEMINI_API_KEY is not set
+        return res.json({
+          success: true,
+          answer: `I am ready to assist with your Discord bot and code! To unlock real-time Gemini AI capabilities across all questions, ensure GEMINI_API_KEY is configured in your environment.\n\nHere is guidance regarding your request: "${prompt}"`,
+          code: null
+        });
+      }
+
+      const systemInstruction = `You are a brilliant, unrestricted expert AI coding assistant and Discord engineer.
+You can answer ANY question asked by the user — including Discord bot architecture (discord.py, discord.js), Python, JavaScript, TypeScript, server hosting, APIs, database integration, logic, math, debugging, or any general software engineering / knowledge questions.
+Provide direct, highly accurate, friendly, and complete answers.
+When providing code, provide production-ready, clean, well-commented code. If relevant, include both discord.py and discord.js examples or the specific requested framework.`;
+
+      const contents = [];
+      if (context) {
+        contents.push({ role: "user", parts: [{ text: `Current Workspace Context / Active Code:\n\`\`\`\n${context.substring(0, 4000)}\n\`\`\`` }] });
+        contents.push({ role: "model", parts: [{ text: "Understood. I have reviewed your active file and workspace context." }] });
+      }
+
+      if (Array.isArray(history) && history.length > 0) {
+        for (const msg of history.slice(-6)) {
+          contents.push({
+            role: msg.role === "user" ? "user" : "model",
+            parts: [{ text: String(msg.content || msg.text || "") }]
+          });
+        }
+      }
+
+      contents.push({
+        role: "user",
+        parts: [{ text: prompt.trim() }]
+      });
+
+      const response = await client.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        }
+      });
+
+      const answerText = response.text || "No response generated.";
+      return res.json({
+        success: true,
+        answer: answerText,
+        text: answerText
+      });
+    } catch (err: any) {
+      console.error("AI Ask Error:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to process AI response"
+      });
+    }
+  });
+
+  // Dedicated Bot Code & Cog Generator
+  app.post("/api/bot/generate", async (req, res) => {
+    try {
+      const { prompt, language = "python", activeFile = "" } = req.body;
+
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ success: false, error: "Prompt is required" });
+      }
+
+      const client = getAIClient();
+      if (!client) {
+        return res.json({
+          success: true,
+          code: language.includes("py") 
+            ? `# Generated for: ${prompt}\n@bot.tree.command(name="custom_${Math.floor(Math.random()*1000)}", description="${prompt.substring(0, 50)}")\nasync def custom_handler(interaction: discord.Interaction):\n    await interaction.response.send_message("✨ Executed ${prompt}!")\n`
+            : `// Generated for: ${prompt}\nclient.commands.set('custom_${Math.floor(Math.random()*1000)}', {\n  name: 'custom',\n  description: '${prompt.substring(0, 50)}',\n  async execute(interaction) {\n    await interaction.reply({ content: '✨ Executed: ${prompt}' });\n  }\n});\n`
+        });
+      }
+
+      const systemInstruction = `You are an elite Discord bot programmer.
+Generate clean, production-grade, bug-free Discord bot code for the requested feature.
+Target framework: ${language.includes("py") ? "discord.py v2.4+ with application slash commands and cogs" : "discord.js v14+ with SlashCommandBuilder & GatewayIntentBits"}.
+Return ONLY executable code snippets or complete cogs that can be directly pasted or appended into the user's project.
+Include helpful inline comments.`;
+
+      const response = await client.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: `Generate code for: "${prompt}".\nTarget Framework: ${language}\nExisting active file snippet: ${activeFile.substring(0, 1500)}` }]
+          }
+        ],
+        config: {
+          systemInstruction,
+          temperature: 0.4
+        }
+      });
+
+      let rawCode = response.text || "";
+      // Strip markdown code fences if wrapped
+      if (rawCode.startsWith("```python") || rawCode.startsWith("```javascript") || rawCode.startsWith("```typescript") || rawCode.startsWith("```js") || rawCode.startsWith("```py")) {
+        rawCode = rawCode.replace(/^```[a-z]*\n?/, "").replace(/\n?```$/, "").trim();
+      } else if (rawCode.startsWith("```")) {
+        rawCode = rawCode.replace(/^```\n?/, "").replace(/\n?```$/, "").trim();
+      }
+
+      return res.json({
+        success: true,
+        code: rawCode,
+        botCode: rawCode
+      });
+    } catch (err: any) {
+      console.error("Bot Code Generator Error:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to generate bot code"
       });
     }
   });
 
   // AI Task & Script Generator for Discord Workflow
-  app.post("/api/ai/generate-bot-task", aiGenerateLimiter, async (req, res) => {
+  app.post("/api/ai/generate-bot-task", async (req, res) => {
     try {
       const { prompt, language = "typescript", schedule = "0 9 * * *" } = req.body;
 
-      if (!prompt || typeof prompt !== "string" || prompt.trim().length > 1000) {
-        return res.status(400).json({ error: "A valid prompt (under 1000 characters) is required." });
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "Prompt is required" });
       }
 
       const client = getAIClient();
       if (!client) {
-        return res.status(503).json({
-          success: false,
-          error: "AI generation service is temporarily unavailable."
+        return res.status(500).json({
+          error: "Gemini API key is not configured. Please check your GEMINI_API_KEY.",
         });
       }
 
@@ -412,7 +423,7 @@ Generate a JSON response containing:
 8. "secretsRequired": array of secret names needed (e.g. ["DISCORD_WEBHOOK_URL", "DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID", "API_KEY"])
 9. "embedPreview": a sample Discord Embed JSON object { title, description, color, fields, footer: { text } } representing what the bot sends.
 
-Return strictly raw JSON conforming to this schema without markdown code fences.`;
+Return strictly raw JSON conforming to this schema without markdown code fences if possible, or parseable JSON.`;
 
       const response = await client.models.generateContent({
         model: "gemini-3.7-flash",
@@ -429,10 +440,11 @@ Proposed schedule: ${schedule}.`,
       const responseText = response.text || "{}";
       const parsed = JSON.parse(responseText);
       return res.json({ success: true, task: parsed });
-    } catch {
+    } catch (err: any) {
+      console.error("AI Generation Error:", err);
       return res.status(500).json({
         success: false,
-        error: "Failed to generate AI bot task.",
+        error: err?.message || "Failed to generate AI bot task",
       });
     }
   });
@@ -441,148 +453,33 @@ Proposed schedule: ${schedule}.`,
   // TELEMETRY & USER TRACKING API
   // ==========================================
 
-  app.post("/api/telemetry/event", createRateLimiter(60, 60000), (req, res) => {
+  // Record user event (signups, logins, exports, commands)
+  app.post("/api/telemetry/event", (req, res) => {
     try {
       const eventData = req.body;
       if (!eventData || !eventData.type) {
         return res.status(400).json({ success: false, message: "Event type is required." });
       }
       const event = telemetryStore.recordEvent(eventData);
-      res.json({ success: true, eventId: event.id });
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to record event." });
+      res.json({ success: true, event });
+    } catch (err: any) {
+      console.error("Telemetry event error:", err);
+      res.status(500).json({ success: false, error: err?.message });
     }
   });
 
-  app.post("/api/telemetry/heartbeat", createRateLimiter(60, 60000), (req, res) => {
+  // Client heartbeat pulse for live active users
+  app.post("/api/telemetry/heartbeat", (req, res) => {
     try {
       const { sessionKey, userId, email, name } = req.body;
       telemetryStore.recordHeartbeat(sessionKey || "guest_session", userId, email, name);
       res.json({ success: true, onlineNow: telemetryStore.getActiveOnlineCount() });
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to process heartbeat." });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message });
     }
   });
 
-  // ==========================================
-  // ADMIN PANEL & USER ANALYTICS ACCESS (Strict Authentication)
-  // ==========================================
-
-  app.post("/api/admin/auth/check", adminAuthLimiter, (req, res) => {
-    try {
-      const { email, passcode } = req.body;
-      if (!passcode && !email) {
-        return res.status(401).json({ allowed: false, error: "Credentials required." });
-      }
-      const check = telemetryStore.checkAdminAccess(email, passcode);
-      if (!check.allowed) {
-        return res.status(403).json({ allowed: false, message: "Access denied." });
-      }
-      res.json(check);
-    } catch {
-      res.status(500).json({ allowed: false, error: "Internal verification error." });
-    }
-  });
-
-  app.post("/api/admin/metrics", adminAuthLimiter, (req, res) => {
-    try {
-      const { email, passcode } = req.body;
-      const authResult = telemetryStore.checkAdminAccess(email, passcode);
-      if (!authResult.allowed) {
-        return res.status(403).json({ success: false, message: "Unauthorized. Valid administrative passcode or whitelisted email required." });
-      }
-
-      const metrics = telemetryStore.getMetricsSummary();
-      res.json({ success: true, ...metrics, role: authResult.role });
-    } catch {
-      res.status(500).json({ success: false, error: "Failed to load metrics." });
-    }
-  });
-
-  app.post("/api/admin/whitelist/add", adminAuthLimiter, (req, res) => {
-    try {
-      const { callerEmail, passcode, newAdminEmail } = req.body;
-      const authResult = telemetryStore.checkAdminAccess(callerEmail, passcode);
-      if (!authResult.allowed) {
-        return res.status(403).json({ success: false, message: "Unauthorized." });
-      }
-
-      if (!newAdminEmail || typeof newAdminEmail !== "string" || !newAdminEmail.includes("@")) {
-        return res.status(400).json({ success: false, message: "Valid email address is required." });
-      }
-
-      const added = telemetryStore.addAdminEmail(newAdminEmail);
-      res.json({ success: true, added, config: telemetryStore.getAdminConfig() });
-    } catch {
-      res.status(500).json({ success: false, error: "Operation failed." });
-    }
-  });
-
-  app.post("/api/admin/whitelist/remove", adminAuthLimiter, (req, res) => {
-    try {
-      const { callerEmail, passcode, targetEmail } = req.body;
-      const authResult = telemetryStore.checkAdminAccess(callerEmail, passcode);
-      if (!authResult.allowed) {
-        return res.status(403).json({ success: false, message: "Unauthorized." });
-      }
-
-      const removed = telemetryStore.removeAdminEmail(targetEmail);
-      res.json({ success: true, removed, config: telemetryStore.getAdminConfig() });
-    } catch {
-      res.status(500).json({ success: false, error: "Operation failed." });
-    }
-  });
-
-  app.post("/api/admin/telemetry/simulate-event", adminAuthLimiter, (req, res) => {
-    try {
-      const { callerEmail, passcode, eventType, details } = req.body;
-      const authResult = telemetryStore.checkAdminAccess(callerEmail, passcode);
-      if (!authResult.allowed) {
-        return res.status(403).json({ success: false, message: "Unauthorized." });
-      }
-
-      const simEvent = telemetryStore.recordEvent({
-        type: eventType || "BOT_CREATED",
-        userId: "sim_" + Math.random().toString(36).substring(2, 8),
-        userName: "Simulated Architect #" + Math.floor(Math.random() * 900 + 100),
-        userEmail: `architect_${Math.floor(Math.random() * 800 + 100)}@novaforge.dev`,
-        details: details || { botName: "Nexus Sentinel Bot", commandsCount: 8 }
-      });
-
-      res.json({ success: true, event: simEvent, metrics: telemetryStore.getMetricsSummary() });
-    } catch {
-      res.status(500).json({ success: false, error: "Simulation failed." });
-    }
-  });
-
-  app.post("/api/admin/telemetry/reset", adminAuthLimiter, (req, res) => {
-    try {
-      const { callerEmail, passcode } = req.body;
-      const authResult = telemetryStore.checkAdminAccess(callerEmail, passcode);
-      if (!authResult.allowed) {
-        return res.status(403).json({ success: false, message: "Unauthorized." });
-      }
-
-      telemetryStore.seedInitialData();
-      res.json({ success: true, message: "Telemetry reseeded successfully.", metrics: telemetryStore.getMetricsSummary() });
-    } catch {
-      res.status(500).json({ success: false, error: "Reset failed." });
-    }
-  });
-
-  // ==========================================
-  // STRICT 404 HANDLER FOR ALL UNMATCHED /api/*
-  // (Prevents falling back to SPA HTML on invalid API routes)
-  // ==========================================
-  app.all("/api/*", (_req: Request, res: Response) => {
-    res.status(404).json({
-      success: false,
-      error: "API endpoint not found",
-      code: "API_ROUTE_NOT_FOUND"
-    });
-  });
-
-  // Vite integration / SPA Static Serving
+  // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -598,7 +495,7 @@ Proposed schedule: ${schedule}.`,
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`NovaForge Discord Studio running on http://0.0.0.0:${PORT}`);
+    console.log(`Discord GitHub Workflow Studio running on http://0.0.0.0:${PORT}`);
   });
 }
 

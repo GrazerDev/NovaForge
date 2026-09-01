@@ -70,12 +70,7 @@ export interface AdminMetricsData {
 }
 
 const SESSION_KEY = 'nf_session_' + Math.random().toString(36).substring(2, 12);
-export const SUPER_ADMIN_EMAILS = [
-  'scientiapioneers@gmail.com',
-  'everythingistaken325@gmail.com',
-  'owner@novaforge.dev',
-  'admin@novaforge.dev'
-];
+const SUPER_ADMIN_EMAIL = 'everythingistaken325@gmail.com';
 const ADMIN_CACHE_KEY = 'novaforge_admin_auth_pass';
 
 // Track event in server store and optionally Firestore
@@ -146,10 +141,10 @@ export async function checkAdminAccess(
   const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || '';
 
   // 1. Local Instant Super Admin Verification
-  if (email && SUPER_ADMIN_EMAILS.some(e => e.toLowerCase() === email.toLowerCase().trim())) {
+  if (email && email.toLowerCase().trim() === SUPER_ADMIN_EMAIL.toLowerCase()) {
     return { allowed: true, role: 'super_admin' };
   }
-  if (storedPass && ['NOVA_SUPER_ARCHITECT_2026', 'ADMIN2026', 'MASTER_ADMIN_2026', 'novaforge'].includes(storedPass.trim())) {
+  if (storedPass === 'NOVA_SUPER_ARCHITECT_2026') {
     return { allowed: true, role: 'super_admin' };
   }
 
@@ -165,9 +160,6 @@ export async function checkAdminAccess(
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.allowed && storedPass) {
-        localStorage.setItem(ADMIN_CACHE_KEY, storedPass);
-      }
       return data;
     }
   } catch (err) {
@@ -182,134 +174,23 @@ export async function fetchAdminMetrics(
   email?: string | null,
   passcode?: string | null
 ): Promise<AdminMetricsData> {
-  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || 'NOVA_SUPER_ARCHITECT_2026';
-  const callerEmail = email || 'scientiapioneers@gmail.com';
+  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || '';
 
-  try {
-    const res = await fetch('/api/admin/metrics', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: callerEmail,
-        passcode: storedPass
-      })
-    });
+  const res = await fetch('/api/admin/metrics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: email || undefined,
+      passcode: storedPass || undefined
+    })
+  });
 
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn("Network error fetching metrics, using local fallback store:", err);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || 'Access Denied to Admin Metrics.');
   }
 
-  // Fallback rich telemetry state so dashboard never crashes
-  return {
-    totalUsers: 5,
-    activeToday: 4,
-    onlineNow: 2,
-    totalBots: 16,
-    totalCommands: 94,
-    totalExports: 40,
-    twoFactorRate: 60,
-    moduleStats: {
-      slashCommands: 94,
-      rpgDungeons: 32,
-      casinoEconomy: 38,
-      ticketDesk: 28,
-      autoModAegis: 41,
-      astralLeveling: 30,
-      schedulers: 22
-    },
-    users: [
-      {
-        uid: 'super_architect_sp',
-        email: 'scientiapioneers@gmail.com',
-        displayName: 'Scientia Pioneers (Super Admin)',
-        provider: 'google',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
-        lastActiveAt: new Date().toISOString(),
-        botsCount: 6,
-        lastBotName: 'NovaMaster RPG & AutoMod',
-        commandsCount: 34,
-        exportsCount: 18,
-        is2FAEnabled: true,
-        role: 'super_admin'
-      },
-      {
-        uid: 'founder_owner_01',
-        email: 'everythingistaken325@gmail.com',
-        displayName: 'EverythingIsTaken (Co-Founder)',
-        provider: 'google',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(),
-        lastActiveAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        botsCount: 4,
-        lastBotName: 'Aegis Sentinel Security',
-        commandsCount: 22,
-        exportsCount: 11,
-        is2FAEnabled: true,
-        role: 'super_admin'
-      },
-      {
-        uid: 'arch_valkyrie_88',
-        email: 'valkyrie.dev@discordbot.net',
-        displayName: 'Valkyrie Dev',
-        provider: 'novaforge',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
-        lastActiveAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-        botsCount: 3,
-        lastBotName: 'High Roller Casino Bot',
-        commandsCount: 18,
-        exportsCount: 6,
-        is2FAEnabled: true,
-        role: 'admin'
-      },
-      {
-        uid: 'arch_nexus_99',
-        email: 'nexus.architect@gamingguild.com',
-        displayName: 'Nexus Guildmaster',
-        provider: 'google',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(),
-        lastActiveAt: new Date(Date.now() - 1000 * 60 * 80).toISOString(),
-        botsCount: 2,
-        lastBotName: 'Astral Dungeon Leveler',
-        commandsCount: 14,
-        exportsCount: 4,
-        is2FAEnabled: false,
-        role: 'architect'
-      }
-    ],
-    recentEvents: [
-      {
-        id: 'evt_init_1',
-        timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-        type: 'PAGE_VIEW',
-        userId: 'super_architect_sp',
-        userEmail: 'scientiapioneers@gmail.com',
-        userName: 'Scientia Pioneers (Super Admin)',
-        details: { viewMode: 'admin_panel' }
-      },
-      {
-        id: 'evt_init_2',
-        timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-        type: 'BOT_EXPORTED',
-        userId: 'arch_valkyrie_88',
-        userEmail: 'valkyrie.dev@discordbot.net',
-        userName: 'Valkyrie Dev',
-        details: { format: 'zip', botName: 'High Roller Casino Bot' }
-      },
-      {
-        id: 'evt_init_3',
-        timestamp: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-        type: 'COMMAND_ADDED',
-        userId: 'super_architect_sp',
-        userEmail: 'scientiapioneers@gmail.com',
-        userName: 'Scientia Pioneers',
-        details: { command: 'dungeon_boss', botName: 'NovaMaster RPG & AutoMod' }
-      }
-    ],
-    adminWhitelist: SUPER_ADMIN_EMAILS,
-    role: 'super_admin'
-  };
+  return await res.json();
 }
 
 // Add user to admin whitelist
@@ -318,12 +199,12 @@ export async function addAdminWhitelistEmail(
   newAdminEmail: string,
   passcode?: string | null
 ): Promise<void> {
-  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || 'NOVA_SUPER_ARCHITECT_2026';
+  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || '';
   const res = await fetch('/api/admin/whitelist/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      callerEmail: callerEmail || 'scientiapioneers@gmail.com',
+      callerEmail,
       passcode: storedPass,
       newAdminEmail
     })
@@ -341,12 +222,12 @@ export async function removeAdminWhitelistEmail(
   targetEmail: string,
   passcode?: string | null
 ): Promise<void> {
-  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || 'NOVA_SUPER_ARCHITECT_2026';
+  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || '';
   const res = await fetch('/api/admin/whitelist/remove', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      callerEmail: callerEmail || 'scientiapioneers@gmail.com',
+      callerEmail,
       passcode: storedPass,
       targetEmail
     })
@@ -356,45 +237,6 @@ export async function removeAdminWhitelistEmail(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || 'Failed to remove admin');
   }
-}
-
-// Trigger simulated event for testing live stream
-export async function simulateTelemetryEvent(
-  callerEmail: string,
-  eventType: string,
-  passcode?: string | null
-): Promise<void> {
-  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || 'NOVA_SUPER_ARCHITECT_2026';
-  await fetch('/api/admin/telemetry/simulate-event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      callerEmail: callerEmail || 'scientiapioneers@gmail.com',
-      passcode: storedPass,
-      eventType,
-      details: {
-        botName: 'Nexus Sentinel AI',
-        commandsCount: 9,
-        timestamp: new Date().toISOString()
-      }
-    })
-  });
-}
-
-// Reset telemetry seed data
-export async function resetTelemetryData(
-  callerEmail: string,
-  passcode?: string | null
-): Promise<void> {
-  const storedPass = passcode || localStorage.getItem(ADMIN_CACHE_KEY) || 'NOVA_SUPER_ARCHITECT_2026';
-  await fetch('/api/admin/telemetry/reset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      callerEmail: callerEmail || 'scientiapioneers@gmail.com',
-      passcode: storedPass
-    })
-  });
 }
 
 // Export User Analytics to CSV
@@ -420,19 +262,6 @@ export function exportUsersCSV(users: TelemetryUser[]): void {
   const a = document.createElement('a');
   a.href = url;
   a.download = `NovaForge_User_Analytics_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-// Export Full Database & Metrics to JSON
-export function exportDatabaseJSON(metrics: AdminMetricsData): void {
-  const blob = new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `NovaForge_Telemetry_Snapshot_${new Date().toISOString().split('T')[0]}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();

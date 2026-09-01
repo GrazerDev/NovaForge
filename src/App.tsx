@@ -11,7 +11,7 @@ import { AIAssistantPanel } from './components/AIAssistantPanel';
 import { WelcomeAuthScreen } from './components/WelcomeAuthScreen';
 import { AccountSettingsView } from './components/AccountSettingsView';
 import { AIBuildingView } from './components/AIBuildingView';
-import { AdminPanel } from './components/AdminPanel';
+import { CodeStudio } from './components/CodeStudio';
 import { TokenModal } from './components/TokenModal';
 import { IdeasRouletteModal } from './components/IdeasRouletteModal';
 import { GitHubGuideModal } from './components/GitHubGuideModal';
@@ -69,14 +69,9 @@ export default function App() {
   // 2FA Security State
   const [twoFactorData, setTwoFactorData] = useState<TwoFactorSecurityData>(() => loadTwoFactorData());
 
-  // Default to 'welcome_auth' on initial first load unless user already visited, or direct navigation to /admin/panel
+  // Default to 'welcome_auth' on initial first load unless user already visited
   const [mainViewMode, setMainViewMode] = useState<MainAppViewMode>(() => {
     try {
-      const path = window.location.pathname.toLowerCase();
-      const hash = window.location.hash.toLowerCase();
-      if (path.includes('/admin') || hash.includes('admin')) {
-        return 'admin_panel';
-      }
       const hasVisited = localStorage.getItem('novaforge_has_visited');
       if (hasVisited === 'true') {
         return 'dash';
@@ -114,34 +109,8 @@ export default function App() {
     return generateBotFromPrompt('Build an all-in-one NovaForge bot with /help, /daily coins, /shop, /dungeon, /ticket support, and auto-mod protection');
   });
 
-  // Keep URL in sync with view mode and track telemetry
+  // Track page visits
   useEffect(() => {
-    const handleLocationChange = () => {
-      const path = window.location.pathname.toLowerCase();
-      const hash = window.location.hash.toLowerCase();
-      if (path.includes('/admin') || hash.includes('admin')) {
-        setMainViewMode('admin_panel');
-      }
-    };
-
-    window.addEventListener('popstate', handleLocationChange);
-    window.addEventListener('hashchange', handleLocationChange);
-    return () => {
-      window.removeEventListener('popstate', handleLocationChange);
-      window.removeEventListener('hashchange', handleLocationChange);
-    };
-  }, []);
-
-  // Update browser URL on view changes
-  useEffect(() => {
-    if (mainViewMode === 'admin_panel') {
-      if (!window.location.pathname.includes('/admin')) {
-        window.history.pushState(null, '', '/admin/panel');
-      }
-    } else if (window.location.pathname.includes('/admin')) {
-      window.history.pushState(null, '', '/');
-    }
-
     if (mainViewMode !== 'welcome_auth') {
       try {
         localStorage.setItem('novaforge_has_visited', 'true');
@@ -431,6 +400,7 @@ export default function App() {
   const getViewTitle = () => {
     switch (mainViewMode) {
       case 'dash': return { title: 'Bot Dashboard & Gateway', desc: 'Manage 24/7 hosting, start/stop runtime, and telemetry' };
+      case 'code_studio': return { title: 'Discord Code IDE (Python & JS)', desc: 'Write, debug, and export full Discord.py & Discord.js bots' };
       case 'ai_building': return { title: 'Zero-API AI Bot Architect', desc: 'Instant natural-language generator for slash commands, embeds & code' };
       case 'simulator': return { title: 'Live Discord Simulator', desc: 'Interactive chat testbed with live slash command dispatch' };
       case 'modules': return { title: 'Visual Modules & Action Studio', desc: 'Build RPG dungeons, casino economy, ticket channels & auto-mod' };
@@ -441,16 +411,6 @@ export default function App() {
       default: return { title: 'NovaForge Studio', desc: 'Discord Bot IDE by Grazer' };
     }
   };
-
-  // Render Full-Screen Admin Portal if selected
-  if (mainViewMode === 'admin_panel') {
-    return (
-      <AdminPanel
-        currentUser={currentUser}
-        onBackToStudio={() => setMainViewMode('dash')}
-      />
-    );
-  }
 
   // Render Full-Screen Welcome Auth if selected
   if (mainViewMode === 'welcome_auth') {
@@ -662,7 +622,19 @@ export default function App() {
             </div>
           )}
 
-          {/* 2. AI BUILDING (Zero API prompt-to-bot) */}
+          {/* 2. CUSTOM CODE STUDIO & IDE (discord.py & discord.js) */}
+          {mainViewMode === 'code_studio' && (
+            <div className="h-[calc(100vh-140px)] min-h-[620px] rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col">
+              <CodeStudio
+                botProject={botProject}
+                tokenInfo={tokenInfo}
+                onUpdateBotProject={setBotProject}
+                onOpenTokenModal={() => setIsTokenModalOpen(true)}
+              />
+            </div>
+          )}
+
+          {/* 3. AI BUILDING (Zero API prompt-to-bot) */}
           {mainViewMode === 'ai_building' && (
             <AIBuildingView
               botProject={botProject}
